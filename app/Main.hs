@@ -15,13 +15,14 @@ import System.Exit
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.Text             as T
 
-nightlyFolder, ltsFolder :: String
+nightlyFolder, releaseFolder :: String
 nightlyFolder = "nightly"
-ltsFolder     = "lts"
+releaseFolder = "release"
 
 main :: IO ()
 main = do
   Options {..} <- execParser optionsParserInfo
+  optMode <- detectMode
   buildInfo <-
     case optMode of
       CircleCI -> circleCiBuildInfo
@@ -58,7 +59,7 @@ objectKeyFunction BuildInfo {..}
         Nothing -> [nightlyFolder, biSha1, path]
         -- This commit has a tag on it, so it's a release and we should
         -- store it in a long-term folder.
-        Just tag -> [ltsFolder, tag, path]
+        Just tag -> [releaseFolder, tag, path]
 
 ----------------------------------------------------------------------------
 -- Command line interface
@@ -66,13 +67,8 @@ objectKeyFunction BuildInfo {..}
 -- | Command line options.
 
 data Options = Options
-  { optMode :: Mode     -- ^ Mode of operation
-  , optPaths :: [FilePath] -- ^ Path to the artifact to save
+  { optPaths :: [FilePath] -- ^ Path to the artifact to save
   }
-
--- | Mode of operation.
-
-data Mode = CircleCI | AppVeyor
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser) . mconcat $
@@ -83,17 +79,25 @@ optionsParserInfo = info (helper <*> optionsParser) . mconcat $
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> argument parseMode
-  ( metavar "MODE"
-  <> help "Mode of operation: circleci or appveyor" )
-  <*> some (argument str (metavar "FILES" <> help "Files to store."))
+  <$> some (argument str (metavar "FILES" <> help "Files to store."))
 
-parseMode :: ReadM Mode
-parseMode = eitherReader $ \s ->
-  case s of
-    "circleci" -> Right CircleCI
-    "appveyor" -> Right AppVeyor
-    other      -> Left ("unknown mode: \"" ++ other ++ "\"")
+----------------------------------------------------------------------------
+-- Mode of operation
+
+-- | Mode of operation.
+
+data Mode = CircleCI | AppVeyor
+
+detectMode :: IO Mode
+detectMode = do
+  circleCi <- lookupEnv "CIRCLECI"
+  appVeyor <- lookupEnv "APPVEYOR"
+  case (circleCi, appVeyor) of
+    (Just "true", _) -> return CircleCI
+    (_, Just "True") -> return AppVeyor
+    _                -> do
+      putStrLn "Could not detect mode of operation"
+      exitFailure
 
 ----------------------------------------------------------------------------
 -- CI build info
