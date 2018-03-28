@@ -8,6 +8,7 @@ import Control.Monad.Trans.AWS
 import Control.Monad.Trans.Maybe
 import Data.List (intercalate)
 import Data.Semigroup ((<>))
+import Data.Time (UTCTime, getCurrentTime, formatTime, defaultTimeLocale)
 import Network.AWS.Data (fromText)
 import Network.AWS.S3 (BucketName (..), ObjectKey (..), putObject)
 import Options.Applicative
@@ -60,10 +61,12 @@ objectKeyFunction BuildInfo {..}
   | otherwise = Right $ \path -> ObjectKey . T.pack . intercalate "/" $
       case biTag of
         -- No tag, just a nightly build. Identified by SHA1 of commit.
-        Nothing -> [nightlyFolder, biSha1, path]
+        Nothing -> [nightlyFolder, biDate ++ biSha1, path]
         -- This commit has a tag on it, so it's a release and we should
         -- store it in a long-term folder.
         Just tag -> [releaseFolder, tag, path]
+  where
+    biDate = formatTime defaultTimeLocale "%d-%m-%Y" biTime
 
 ----------------------------------------------------------------------------
 -- Command line interface
@@ -113,6 +116,7 @@ data BuildInfo = BuildInfo
   , biJob :: !String
   , biTag :: !(Maybe String)
   , biSha1 :: !String
+  , biTime :: !UTCTime
   }
 
 -- | Obtain 'BuildInfo' on Circle CI.
@@ -124,6 +128,7 @@ circleCiBuildInfo = do
   biJob    <- getEnv    "CIRCLE_JOB"
   biTag    <- lookupEnv "CIRCLE_TAG"
   biSha1   <- getEnv    "CIRCLE_SHA1"
+  biTime   <- getCurrentTime
   return BuildInfo {..}
 
 -- | Obtain 'BuildInfo' on AppVeyor.
@@ -138,6 +143,7 @@ appVeyorBuildInfo = do
     then Just <$> getEnv "APPVEYOR_REPO_TAG_NAME"
     else return Nothing
   biSha1   <- getEnv "APPVEYOR_REPO_COMMIT"
+  biTime   <- getCurrentTime
   return BuildInfo {..}
 
 ----------------------------------------------------------------------------
