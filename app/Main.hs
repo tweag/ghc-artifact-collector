@@ -5,6 +5,7 @@ module Main (main) where
 import Control.Lens hiding (argument)
 import Control.Monad
 import Control.Monad.Trans.AWS
+import Control.Monad.Trans.Maybe
 import Data.List (intercalate)
 import Data.Semigroup ((<>))
 import Network.AWS.Data (fromText)
@@ -17,7 +18,7 @@ import qualified Data.Text             as T
 
 nightlyFolder, releaseFolder :: String
 nightlyFolder = "nightly"
-releaseFolder = "release"
+releaseFolder = "releases"
 
 main :: IO ()
 main = do
@@ -27,12 +28,15 @@ main = do
     case optMode of
       CircleCI -> circleCiBuildInfo
       AppVeyor -> appVeyorBuildInfo
-  case objectKeyFunction buildInfo of
-    Left msg -> do
+  s3Info <- getS3Info
+  case (objectKeyFunction buildInfo, s3Info) of
+    (Left msg, _) -> do
       putStrLn msg
       exitSuccess
-    Right objectKeyForPath -> do
-      S3Info {..} <- getS3Info
+    (_, Nothing) -> do
+      putStrLn "S3 env vars are not set, so do nothing."
+      exitSuccess
+    (Right objectKeyForPath, Just S3Info {..}) -> do
       env <- (envRegion .~ s3Region) <$>
         newEnv (FromKeys s3AccessKey s3SecretKey)
       forM_ optPaths $ \path -> do
@@ -148,21 +152,21 @@ data S3Info = S3Info
   , s3Region :: !Region -- ^ Bucket Region
   }
 
--- | Obtain 'S3Info' from environment variables.
+-- | Obtain 'S3Info' from environment variables. If at least one such
+-- variable is not set, return 'Nothing'.
 
-getS3Info :: IO S3Info
-getS3Info = do
+getS3Info :: IO (Maybe S3Info)
+getS3Info = runMaybeT $ do
+  let grabEnv = MaybeT . lookupEnv
   s3AccessKey <- AccessKey . B8.pack <$>
-    getEnv "GHC_ARTIFACT_COLLECTOR_ACCESS_KEY"
+    grabEnv "GHC_ARTIFACT_COLLECTOR_ACCESS_KEY"
   s3SecretKey <- SecretKey . B8.pack <$>
-    getEnv "GHC_ARTIFACT_COLLECTOR_SECRET_KEY"
+    grabEnv "GHC_ARTIFACT_COLLECTOR_SECRET_KEY"
   s3BucketName <- BucketName . T.pack <$>
-    getEnv "GHC_ARTIFACT_COLLECTOR_BUCKET_NAME"
+    grabEnv "GHC_ARTIFACT_COLLECTOR_BUCKET_NAME"
   s3Region <- do
-    rawRegion <- T.pack <$> getEnv "GHC_ARTIFACT_COLLECTOR_REGION"
-    case fromText rawRegion of
-      Left err -> do
-        putStrLn err
-        exitFailure
-      Right x -> return x
+    rawRegion <- T.pack <$> grabEnv "GHC_ARTIFACT_COLLECTOR_REGION"
+    MaybeT . return $ case fromText rawRegion of
+      Left  _ -> Nothing
+      Right x -> Just x
   return S3Info {..}
