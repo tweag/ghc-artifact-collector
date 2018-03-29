@@ -61,12 +61,12 @@ objectKeyFunction BuildInfo {..}
   | otherwise = Right $ \path -> ObjectKey . T.pack . intercalate "/" $
       case biTag of
         -- No tag, just a nightly build. Identified by SHA1 of commit.
-        Nothing -> [nightlyFolder, biDate ++ biSha1, path]
+        Nothing -> [nightlyFolder, biJob, biDate ++ biSha1, path]
         -- This commit has a tag on it, so it's a release and we should
         -- store it in a long-term folder.
-        Just tag -> [releaseFolder, tag, path]
+        Just tag -> [releaseFolder, biJob, tag, path]
   where
-    biDate = formatTime defaultTimeLocale "%d-%m-%Y" biTime
+    biDate = formatTime defaultTimeLocale "%d-%m-%Y-" biTime
 
 ----------------------------------------------------------------------------
 -- Command line interface
