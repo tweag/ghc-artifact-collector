@@ -1,0 +1,44 @@
+version: 2
+jobs:
+  linux-build:
+    docker:
+      - image: haskell:8.2
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - stack-work-linux
+      - run: apt-get update -qq
+      - run: apt-get install -qy xz-utils make
+      - run: stack upgrade
+      - run: stack setup
+      - run: stack build
+      - save_cache:
+          key: stack-work-linux
+          paths: "~/.stack"
+      - store-artifacts:
+          path: ".stack-work/install/x86_64-linux/lts-10.0/8.2.2/bin/ghc-artifact-collector"
+
+  darwin-build:
+    macos:
+      xcode: "9.0"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - stack-work-darwin
+      - run: brew install haskell-stack
+      - run: stack setup
+      - run: stack build --copy-bins
+      - save_cache:
+          key: stack-work-darwin
+          paths: "~/.stack"
+      - store-artifacts:
+          path: ".stack-work/install/x86_64-osx/lts-10.0/8.2.2/bin/ghc-artifact-collector"
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - linux-build
+      - darwin-build

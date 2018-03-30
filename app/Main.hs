@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.Trans.AWS
 import Control.Monad.Trans.Maybe
 import Data.List (intercalate)
+import Data.Maybe (isNothing)
 import Data.Semigroup ((<>))
 import Data.Time (UTCTime, getCurrentTime, formatTime, defaultTimeLocale)
 import Network.AWS.Data (fromText)
@@ -57,7 +58,10 @@ objectKeyFunction
   :: BuildInfo
   -> Either String (FilePath -> ObjectKey)
 objectKeyFunction BuildInfo {..}
-  | biBranch /= "master" = Left "Non-master branch, nothing to do."
+  | biBranch /= "master" && isNothing biTag =
+    -- NOTE Heads-up, CicrcleCI sets branch to empty string when a build is
+    -- triggered by a tag push. Strange!
+    Left "Non-master branch and no tag, nothing to do."
   | otherwise = Right $ \path -> ObjectKey . T.pack . intercalate "/" $
       case biTag of
         -- No tag, just a nightly build. Identified by SHA1 of commit.
@@ -137,7 +141,9 @@ appVeyorBuildInfo :: IO BuildInfo
 appVeyorBuildInfo = do
   -- https://www.appveyor.com/docs/environment-variables/
   biBranch <- getEnv "APPVEYOR_REPO_BRANCH"
-  biJob    <- getEnv "APPVEYOR_JOB_NAME"
+  let biJob = "mingw64"
+  -- biJob    <- getEnv "APPVEYOR_JOB_NAME"
+  -- XXX For some reason APPVEYOR_JOB_NAME is not actually set.
   hasTag   <- getEnv "APPVEYOR_REPO_TAG"
   biTag    <- if hasTag == "true"
     then Just <$> getEnv "APPVEYOR_REPO_TAG_NAME"
