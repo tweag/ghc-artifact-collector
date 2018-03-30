@@ -19,6 +19,17 @@ $ ghc-artifact-collector file1 file2 …
   or [AppVeyor](https://www.appveyor.com/docs/environment-variables/) are
   not set, print a message about the fact and exit with status code 1.
 
+* If S3 variables are not set, do nothing (important because we don't want
+  PRs from forks to fail because of this, and those PRs won't have S3
+  variables set). S3 environment variables:
+
+  * `GHC_ARTIFACT_COLLECTOR_ACCESS_KEY`
+  * `GHC_ARTIFACT_COLLECTOR_SECRET_KEY`
+  * `GHC_ARTIFACT_COLLECTOR_BUCKET_NAME`
+  * `GHC_ARTIFACT_COLLECTOR_REGION`
+
+  The variables mean what their names suggest.
+
 * If Branch is not `master` *and* the build has been triggered not by a tag
   push, do nothing. Note that one has to add filtering by tags in order to
   enable building on tag pushing on CircleCI.
