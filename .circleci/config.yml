@@ -1,37 +1,57 @@
 version: 2
 jobs:
-  linux-build:
+  x86_64-linux-build:
     docker:
       - image: haskell:8.2
     steps:
       - checkout
       - restore_cache:
           keys:
-            - stack-work-linux
+            - stack-work-x86_64-linux
       - run: apt-get update -qq
       - run: apt-get install -qy xz-utils make
       - run: stack upgrade
       - run: stack setup
       - run: stack build
       - save_cache:
-          key: stack-work-linux
+          key: stack-work-x86_64-linux
           paths: "~/.stack"
       - store-artifacts:
           path: ".stack-work/install/x86_64-linux/lts-10.0/8.2.2/bin/ghc-artifact-collector"
 
-  darwin-build:
+  i386-linux-build:
+    docker:
+      - image: ghcci/i386-linux:0.0.1
+    environment:
+      PATH: /home/ghc/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - stack-work-i386-linux
+      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - run: stack upgrade
+      - run: stack setup
+      - run: stack build --copy-bins
+      - save_cache:
+          key: stack-work-i386-linux
+          paths: "~/.stack"
+      - store-artifacts:
+          path: ".stack-work/install/i386-linux/lts-10.0/8.2.2/bin/ghc-artifact-collector"
+
+  x86_64-darwin-build:
     macos:
       xcode: "9.0"
     steps:
       - checkout
       - restore_cache:
           keys:
-            - stack-work-darwin
+            - stack-work-x86_64-darwin
       - run: brew install haskell-stack
       - run: stack setup
       - run: stack build --copy-bins
       - save_cache:
-          key: stack-work-darwin
+          key: stack-work-x86_64-darwin
           paths: "~/.stack"
       - store-artifacts:
           path: ".stack-work/install/x86_64-osx/lts-10.0/8.2.2/bin/ghc-artifact-collector"
@@ -40,5 +60,6 @@ workflows:
   version: 2
   build-and-deploy:
     jobs:
-      - linux-build
-      - darwin-build
+      - x86_64-linux-build
+      - i386-linux-build
+      - x86_64-darwin-build
