@@ -30,7 +30,7 @@ $ ghc-artifact-collector file1 file2 …
 
   The variables mean what their names suggest.
 
-* If Branch is not `master` *and* the build has been triggered not by a tag
+* If branch is not `master` *and* the build has been triggered not by a tag
   push, do nothing. Note that one has to add filtering by tags in order to
   enable building on tag pushing on CircleCI.
 
@@ -40,11 +40,18 @@ $ ghc-artifact-collector file1 file2 …
   nightly/<job-name>/<DD-MM-YYYY-SHA1>/<file-name>
   ```
 
-  In addition to that, the latest version of artifact will be copied to this
-  location:
+  In addition to that, the first artifact in the list of files to upload
+  will be copied to this stable location:
 
   ```
-  nightly/<job-name>/latest/<file-name>
+  nightly/<job-name>/latest.<extension-of-file>
+  ```
+
+  Metadata describing how it was obtained (such as SHA1 of commit) will be
+  available here:
+
+  ```
+  nightly/<job-name>/latest-metadata.json
   ```
 
 * If there is a tag, use the following prefix:
@@ -56,7 +63,8 @@ $ ghc-artifact-collector file1 file2 …
   Similarly, the latest version of artifact will be copied to this location:
 
   ```
-  releases/<job-name>/latest/<file-name>
+  releases/<job-name>/latest.<extension-of-file>
+  releases/<job-name>/latest-metadata.json
   ```
 
 * Multiple files given as shell wildcards can be uploaded (if the command is
