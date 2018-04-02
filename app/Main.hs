@@ -13,7 +13,7 @@ import Data.Maybe (listToMaybe, isNothing)
 import Data.Semigroup ((<>))
 import Data.Time (UTCTime, getCurrentTime, formatTime, defaultTimeLocale)
 import Network.AWS.Data (fromText)
-import Network.AWS.S3 (BucketName (..), ObjectKey (..), _ObjectKey, putObject)
+import Network.AWS.S3 hiding (tag)
 import Options.Applicative
 import System.Environment (getEnv, lookupEnv)
 import System.Exit
@@ -46,7 +46,9 @@ main = do
             "Uploading: " ++ path ++ " to " ++ unObjectKey key
           uploadSingleFile path key = do
             body <- chunkedFile defaultChunkSize path
-            void $ send (putObject s3BucketName key body)
+            void $ send (putObjectPublicly key body)
+          putObjectPublicly key body = putObject s3BucketName key body
+            & poACL .~ Just OPublicRead
           unObjectKey = T.unpack . view _ObjectKey
       withEnv <- (\e m -> runResourceT $ runAWST ((envRegion .~ s3Region) e) m)
         <$> newEnv (FromKeys s3AccessKey s3SecretKey)
@@ -62,7 +64,7 @@ main = do
           withEnv (uploadSingleFile path key)
           let metaKey = objectKeyFn path LatestMetadata
           putStrLn $ "Uploading metadata to " ++ unObjectKey metaKey
-          withEnv . void . send . putObject s3BucketName metaKey $
+          withEnv . void . send . putObjectPublicly metaKey $
             toBody (toJSON buildInfo)
       putStrLn "All done, have a nice day."
 
