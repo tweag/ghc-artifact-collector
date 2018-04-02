@@ -38,39 +38,60 @@ main = do
     (_, Nothing) -> do
       putStrLn "S3 env vars are not set, so do nothing."
       exitSuccess
-    (Right objectKeyForPath, Just S3Info {..}) -> do
+    (Right objectKeyFn, Just S3Info {..}) -> do
       env <- (envRegion .~ s3Region) <$>
         newEnv (FromKeys s3AccessKey s3SecretKey)
       forM_ optPaths $ \path -> do
         putStrLn ("Uploading: " ++ path)
         runResourceT . runAWST env $ do
           body <- chunkedFile defaultChunkSize path
-          send (putObject s3BucketName (objectKeyForPath path) body)
+          forM_ [minBound..maxBound] $ \stampFlavor ->
+            -- NOTE We upload twice here, but it's easier to write it this
+            -- way and uploading time is really not a bottleneck in the
+            -- system and won't ever be AFAIK.
+            send (putObject s3BucketName (objectKeyFn path stampFlavor) body)
       putStrLn "All done, have a nice day."
 
 ----------------------------------------------------------------------------
 -- Logic
 
+-- | What sort of stamp to use in object key.
+
+data StampFlavor
+  = WithStamp          -- ^ Use time\/SHA1\/tag stamp
+  | Latest             -- ^ Just use latest
+  deriving (Enum, Bounded)
+
 -- | Get a function that is to be used for 'ObjectKey' generation from
--- 'FilePath's or the reason why we prefer to do nothing this time.
+-- 'FilePath' and 'StampFlavor' or the reason why we prefer to do nothing
+-- this time.
 
 objectKeyFunction
   :: BuildInfo
-  -> Either String (FilePath -> ObjectKey)
+  -> Either String (FilePath -> StampFlavor -> ObjectKey)
 objectKeyFunction BuildInfo {..}
   | biBranch /= "master" && isNothing biTag =
     -- NOTE Heads-up, CicrcleCI sets branch to empty string when a build is
     -- triggered by a tag push. Strange!
     Left "Non-master branch and no tag, nothing to do."
-  | otherwise = Right $ \path -> ObjectKey . T.pack . intercalate "/" $
-      case biTag of
-        -- No tag, just a nightly build. Identified by SHA1 of commit.
-        Nothing -> [nightlyFolder, biJob, biDate ++ biSha1, path]
-        -- This commit has a tag on it, so it's a release and we should
-        -- store it in a long-term folder.
-        Just tag -> [releaseFolder, biJob, tag, path]
+  | otherwise = Right $ \path stampFlavor ->
+      ObjectKey . T.pack . intercalate "/" $
+        case biTag of
+          Nothing ->
+            let stamp =
+                  case stampFlavor of
+                    WithStamp -> biDate ++ biSha1
+                    Latest    -> latestStamp
+            in [nightlyFolder, biJob, stamp, path]
+          Just tag ->
+            let stamp =
+                  case stampFlavor of
+                    WithStamp -> tag
+                    Latest    -> latestStamp
+            in [releaseFolder, biJob, stamp, path]
   where
     biDate = formatTime defaultTimeLocale "%d-%m-%Y-" biTime
+    latestStamp = "latest"
 
 ----------------------------------------------------------------------------
 -- Command line interface

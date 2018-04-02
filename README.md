@@ -40,10 +40,23 @@ $ ghc-artifact-collector file1 file2 …
   nightly/<job-name>/<DD-MM-YYYY-SHA1>/<file-name>
   ```
 
+  In addition to that, the latest version of artifact will be copied to this
+  location:
+
+  ```
+  nightly/<job-name>/latest/<file-name>
+  ```
+
 * If there is a tag, use the following prefix:
 
   ```
   releases/<job-name>/<tag>/<file-name>
+  ```
+
+  Similarly, the latest version of artifact will be copied to this location:
+
+  ```
+  releases/<job-name>/latest/<file-name>
   ```
 
 * Multiple files given as shell wildcards can be uploaded (if the command is
