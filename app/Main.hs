@@ -5,12 +5,12 @@ module Main (main) where
 
 import Control.Lens hiding (argument, (<.>), (.=))
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Trans.AWS
 import Control.Monad.Trans.Maybe
 import Data.Aeson hiding (Options)
 import Data.List (intercalate)
-import Data.Maybe (listToMaybe, isNothing)
-import Data.Semigroup ((<>))
+import Data.Maybe (isNothing)
 import Data.Time (UTCTime, getCurrentTime, formatTime, defaultTimeLocale)
 import Network.AWS.Data (fromText)
 import Network.AWS.S3 hiding (tag)
@@ -34,38 +34,45 @@ main = do
       CircleCI -> circleCiBuildInfo
       AppVeyor -> appVeyorBuildInfo
   s3Info <- getS3Info
-  case (objectKeyFunction buildInfo, s3Info) of
-    (Left msg, _) -> do
-      putStrLn msg
-      exitSuccess
-    (_, Nothing) -> do
+  case s3Info of
+    Nothing -> do
       putStrLn "S3 env vars are not set, so do nothing."
       exitSuccess
-    (Right objectKeyFn, Just S3Info {..}) -> do
+    Just S3Info {..} -> do
       let echoUploading path key = putStrLn $
             "Uploading: " ++ path ++ " to " ++ unObjectKey key
           uploadSingleFile path key = do
             body <- chunkedFile defaultChunkSize path
-            void $ send (putObjectPublicly key body)
-          putObjectPublicly key body = putObject s3BucketName key body
-            & poACL .~ Just OPublicRead
-          unObjectKey = T.unpack . view _ObjectKey
+            putObjectPublicly key body
+          putObjectPublicly key body = void . send $
+            putObject s3BucketName key body
+              & poACL .~ Just OPublicRead
       withEnv <- (\e m -> runResourceT $ runAWST ((envRegion .~ s3Region) e) m)
         <$> newEnv (FromKeys s3AccessKey s3SecretKey)
-      forM_ optPaths $ \path -> do
-        let key = objectKeyFn path WithStamp
-        echoUploading path key
-        withEnv (uploadSingleFile path key)
-      case listToMaybe optPaths of
-        Nothing -> return ()
-        Just path -> do
-          let key = objectKeyFn path Latest
-          echoUploading path key
-          withEnv (uploadSingleFile path key)
-          let metaKey = objectKeyFn path LatestMetadata
-          putStrLn $ "Uploading metadata to " ++ unObjectKey metaKey
-          withEnv . void . send . putObjectPublicly metaKey $
-            toBody (toJSON buildInfo)
+      case optAsTool of
+        Nothing ->
+          case objectKeyFunction buildInfo of
+            Left msg -> do
+              putStrLn msg
+              exitSuccess
+            Right objectKeyFn -> do
+              forM_
+                [(s, f) | s <- [minBound..maxBound]
+                        , f <- [minBound..maxBound]] $
+                \(stampFlavor, fileFlavor) -> do
+                  let okey = objectKeyFn optPath stampFlavor fileFlavor
+                  withEnv $ case fileFlavor of
+                    Bindist -> do
+                      liftIO (echoUploading optPath okey)
+                      uploadSingleFile optPath okey
+                    Metadata -> do
+                      liftIO . putStrLn $
+                        "Uploading metadata to " ++ unObjectKey okey
+                      putObjectPublicly okey (toBody $ toJSON buildInfo)
+        Just name -> withEnv $ do
+          let okey = toolObjectKey name
+          liftIO (echoUploading optPath okey)
+          uploadSingleFile optPath okey
       putStrLn "All done, have a nice day."
 
 ----------------------------------------------------------------------------
@@ -76,7 +83,13 @@ main = do
 data StampFlavor
   = WithStamp          -- ^ Use time\/SHA1\/tag stamp
   | Latest             -- ^ Label as latest, preserve file extension
-  | LatestMetadata     -- ^ Use \"latest-metadata.json\"
+  deriving (Enum, Bounded)
+
+-- | File flavor: bindist or metadata.
+
+data FileFlavor
+  = Bindist            -- ^ Bindist
+  | Metadata           -- ^ Metadata
   deriving (Enum, Bounded)
 
 -- | Get a function that is to be used for 'ObjectKey' generation from
@@ -85,29 +98,40 @@ data StampFlavor
 
 objectKeyFunction
   :: BuildInfo
-  -> Either String (FilePath -> StampFlavor -> ObjectKey)
+  -> Either String (FilePath -> StampFlavor -> FileFlavor -> ObjectKey)
 objectKeyFunction BuildInfo {..}
   | biBranch /= "master" && isNothing biTag =
     -- NOTE Heads-up, CircleCI sets branch to empty string when a build is
     -- triggered by a tag push. Strange!
     Left "Non-master branch and no tag, nothing to do."
-  | otherwise = Right $ \path stampFlavor ->
-      let latest = "latest" <.> takeExtensions path
-          latestMetadata = "latest-metadata.json"
+  | otherwise = Right $ \path stampFlavor fileFlavor ->
+      let biDate = formatTime defaultTimeLocale "%d-%m-%Y-" biTime
+          fileName =
+            case fileFlavor of
+              Bindist -> "bindist" <.> takeExtensions path
+              Metadata -> "metadata.json"
+          typeFolder =
+            if isNothing biTag
+              then nightlyFolder
+              else releaseFolder
+          stampFolder =
+            case stampFlavor of
+              WithStamp ->
+                case biTag of
+                  Nothing -> biDate ++ biSha1
+                  Just tag -> tag
+              Latest -> "latest"
       in ObjectKey . T.pack . intercalate "/" $
-        case biTag of
-          Nothing -> [nightlyFolder, biJob] ++
-            case stampFlavor of
-              WithStamp      -> [biDate ++ biSha1, path]
-              Latest         -> [latest]
-              LatestMetadata -> [latestMetadata]
-          Just tag -> [releaseFolder, biJob] ++
-            case stampFlavor of
-              WithStamp      -> [tag, path]
-              Latest         -> [latest]
-              LatestMetadata -> [latestMetadata]
-  where
-    biDate = formatTime defaultTimeLocale "%d-%m-%Y-" biTime
+         [ typeFolder
+         , biJob
+         , stampFolder
+         , fileName
+         ]
+
+-- | Generate 'ObjectKey' for tool given its name.
+
+toolObjectKey :: FilePath -> ObjectKey
+toolObjectKey name = ObjectKey . T.pack $ "tools/" ++ name
 
 ----------------------------------------------------------------------------
 -- Command line interface
@@ -115,7 +139,8 @@ objectKeyFunction BuildInfo {..}
 -- | Command line options.
 
 data Options = Options
-  { optPaths :: [FilePath] -- ^ Path to the artifact to save
+  { optAsTool :: Maybe String -- ^ Upload as tool named this
+  , optPath   :: FilePath     -- ^ Path to the artifact to save
   }
 
 optionsParserInfo :: ParserInfo Options
@@ -127,7 +152,16 @@ optionsParserInfo = info (helper <*> optionsParser) . mconcat $
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> some (argument str (metavar "FILES" <> help "Files to store."))
+  <$> (optional . strOption . mconcat)
+    [ metavar "TOOL-NAME"
+    , long "as-tool"
+    , short 't'
+    , help "Upload file as a tool with this name."
+    ]
+  <*> (argument str . mconcat)
+    [ metavar "FILE"
+    , help "File to store."
+    ]
 
 ----------------------------------------------------------------------------
 -- Mode of operation
@@ -228,3 +262,9 @@ getS3Info = runMaybeT $ do
       Left  _ -> Nothing
       Right x -> Just x
   return S3Info {..}
+
+----------------------------------------------------------------------------
+-- Misc
+
+unObjectKey :: ObjectKey -> String
+unObjectKey = T.unpack . view _ObjectKey
