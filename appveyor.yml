@@ -17,6 +17,11 @@ build_script:
   - stack setup
   - stack build
 
-artifacts:
-  - path: .stack-work\install\dcc64cee\bin\ghc-artifact-collector.exe
-    name: ghc-artifact-collector
+deploy:
+  - provider: Environment
+    name: tools
+    on:
+      branch: master
+
+deploy_script:
+  - stack exec ghc-artifact-collector -- --as-tool ghc-artifact-collector-x86_64-windows .stack-work\install\dcc64cee\bin\ghc-artifact-collector.exe
