@@ -4,8 +4,8 @@ cabal-version:        1.18
 tested-with:          GHC==8.2.2, GHC==8.4.1
 license:              BSD3
 license-file:         LICENSE.md
-author:               Mark Karpov <markkarpov92@gmail.com>
-maintainer:           Mark Karpov <markkarpov92@gmail.com>
+author:               Mark Karpov <mark.karpov@tweag.io>
+maintainer:           Mark Karpov <mark.karpov@tweag.io>
 homepage:             https://github.com/mrkkrp/ghc-artifact-collector
 bug-reports:          https://github.com/mrkkrp/ghc-artifact-collector/issues
 category:             Network, AWS
