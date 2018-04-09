@@ -57,7 +57,7 @@ jobs:
     steps:
       - attach_workspace:
           at: /tmp
-      - run: /tmp/ghc-artifact-collector --as-tool ghc-artifact-collector-x86_64-linux /tmp/ghc-artifact-collector
+      - run: /tmp/ghc-artifact-collector --as-tool ghc-artifact-collector-i386-linux /tmp/ghc-artifact-collector
 
   x86_64-darwin-build:
     macos:
