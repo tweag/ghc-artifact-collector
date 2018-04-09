@@ -47,7 +47,7 @@ Available options:
 * If there is no tag, use the following object keys:
 
   ```
-  nightly/<job-name>/<DD-MM-YYYY-SHA1>/bindist.<exension-of-file>
+  nightly/<job-name>/<DD-MM-YYYY-SHA1>/bindist.tar.xz
   nightly/<job-name>/<DD-MM-YYYY-SHA1>/metadata.json
   ```
 
@@ -58,21 +58,21 @@ Available options:
   will be copied to this (more) stable location:
 
   ```
-  nightly/<job-name>/latest/bindist.<extension-of-file>
+  nightly/<job-name>/latest/bindist.tar.xz
   nightly/<job-name>/latest/metadata.json
   ```
 
 * If there is a tag, use the following prefix:
 
   ```
-  releases/<job-name>/<tag>/bindist.<extension-of-file>
+  releases/<job-name>/<tag>/bindist.tar.xz
   releases/<job-name>/<tag>/metadata.json
   ```
 
   Similarly, the latest version of artifact will be copied to this location:
 
   ```
-  releases/<job-name>/latest/bindist.<extension-of-file>
+  releases/<job-name>/latest/bindist.tar.xz
   releases/<job-name>/latest/metadata.json
   ```
 
