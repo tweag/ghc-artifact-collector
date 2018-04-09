@@ -17,7 +17,6 @@ import Network.AWS.S3 hiding (tag)
 import Options.Applicative
 import System.Environment (getEnv, lookupEnv)
 import System.Exit
-import System.FilePath ((<.>), takeExtensions)
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.Text             as T
 
@@ -60,7 +59,7 @@ main = do
                 [(s, f) | s <- [minBound..maxBound]
                         , f <- [minBound..maxBound]] $
                 \(stampFlavor, fileFlavor) -> do
-                  let okey = objectKeyFn optPath stampFlavor fileFlavor
+                  let okey = objectKeyFn stampFlavor fileFlavor
                   withEnv $ case fileFlavor of
                     Bindist -> do
                       liftIO (echoUploading optPath okey)
@@ -98,17 +97,17 @@ data FileFlavor
 
 objectKeyFunction
   :: BuildInfo
-  -> Either String (FilePath -> StampFlavor -> FileFlavor -> ObjectKey)
+  -> Either String (StampFlavor -> FileFlavor -> ObjectKey)
 objectKeyFunction BuildInfo {..}
   | biBranch /= "master" && isNothing biTag =
     -- NOTE Heads-up, CircleCI sets branch to empty string when a build is
     -- triggered by a tag push. Strange!
     Left "Non-master branch and no tag, nothing to do."
-  | otherwise = Right $ \path stampFlavor fileFlavor ->
+  | otherwise = Right $ \stampFlavor fileFlavor ->
       let biDate = formatTime defaultTimeLocale "%d-%m-%Y-" biTime
           fileName =
             case fileFlavor of
-              Bindist -> "bindist" <.> takeExtensions path
+              Bindist -> "bindist.tar.xz"
               Metadata -> "metadata.json"
           typeFolder =
             if isNothing biTag
