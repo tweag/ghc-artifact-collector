@@ -99,7 +99,7 @@ objectKeyFunction
   :: BuildInfo
   -> Either String (StampFlavor -> FileFlavor -> ObjectKey)
 objectKeyFunction BuildInfo {..}
-  | biBranch /= "master" && biBranch /= "populate-ghc-artifacts" && isNothing biTag =
+  | biBranch /= "master" && isNothing biTag =
     -- NOTE Heads-up, CircleCI sets branch to empty string when a build is
     -- triggered by a tag push. Strange!
     Left "Non-master branch and no tag, nothing to do."
