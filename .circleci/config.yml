@@ -1,5 +1,6 @@
 version: 2
 jobs:
+
   x86_64-linux-build:
     docker:
       - image: haskell:8.2
@@ -42,7 +43,7 @@ jobs:
       - run: curl -sSL https://get.haskellstack.org/ | sh
       - run: stack upgrade
       - run: stack setup
-      - run: stack build --copy-bins
+      - run: stack build
       - save_cache:
           key: stack-work-i386-linux
           paths: "~/.stack"
@@ -59,6 +60,36 @@ jobs:
           at: /tmp
       - run: /tmp/ghc-artifact-collector --as-tool ghc-artifact-collector-i386-linux /tmp/ghc-artifact-collector
 
+  x86_64-fedora-build:
+    docker:
+      - image: ghcci/x86_64-linux-fedora:0.0.2
+    environment:
+      PATH: /home/ghc/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - stack-work-x86_64-fedora
+      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - run: stack upgrade
+      - run: stack setup
+      - run: stack build
+      - save_cache:
+          key: stack-work-x86_64-fedora
+          paths: "~/.stack"
+      - persist_to_workspace:
+          root: ~/project/.stack-work/install/x86_64-linux-tinfo6/lts-10.0/8.2.2/bin/
+          paths:
+            - ghc-artifact-collector
+
+  x86_64-fedora-deploy:
+    docker:
+      - image: ghcci/x86_64-linux-fedora:0.0.2
+    steps:
+      - attach_workspace:
+          at: /tmp
+      - run: /tmp/ghc-artifact-collector --as-tool ghc-artifact-collector-x86_64-fedora /tmp/ghc-artifact-collector
+
   x86_64-darwin-build:
     macos:
       xcode: "9.0"
@@ -69,7 +100,7 @@ jobs:
             - stack-work-x86_64-darwin
       - run: brew install haskell-stack
       - run: stack setup
-      - run: stack build --copy-bins
+      - run: stack build
       - save_cache:
           key: stack-work-x86_64-darwin
           paths: "~/.stack"
@@ -108,6 +139,13 @@ workflows:
       - x86_64-darwin-deploy:
           requires:
             - x86_64-darwin-build
+          filters:
+            branches:
+              only: master
+      - x86_64-fedora-build
+      - x86_64-fedora-deploy:
+          requires:
+            - x86_64-fedora-build
           filters:
             branches:
               only: master
